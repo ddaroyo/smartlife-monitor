@@ -126,8 +126,8 @@
                             백엔드 API URL:
                         </label>
                         <div class="flex items-center gap-2 flex-1">
-                            <input type="url" id="apiUrlInput" value="http://127.0.0.1:8000/api/sensor"
-                                placeholder="http://127.0.0.1:8000/api/sensor"
+                            <input type="text" id="apiUrlInput" value="/api/sensor"
+                                placeholder="/api/sensor"
                                 class="w-full px-3 py-2 text-xs sm:text-sm bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500" />
                             <button type="button" onclick="applyApiUrl()"
                                 class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white text-xs sm:text-sm font-semibold whitespace-nowrap transition-all shadow-sm">
@@ -393,31 +393,30 @@
 
         const state = {
             mode: 'simulation', // 'simulation' | 'fastapi'
-            apiUrl: 'http://127.0.0.1:8000/api/sensor',
+            apiUrl: '/api/sensor',
             pollingIntervalMs: 3000,
             isPaused: false,
             timerId: null,
+            maxChartPoints: 25,
             simTemp: 24.5,
             simHumid: 45.0,
-            prevTemp: null,
-            prevHumid: null,
-            minTemp: Infinity,
-            maxTemp: -Infinity,
-            minHumid: Infinity,
-            maxHumid: -Infinity,
-            allLogs: [],
-            maxChartPoints: 25,
-            maxTableRows: 10
+            lastTemp: null,
+            lastHumid: null,
+            minTemp: null,
+            maxTemp: null,
+            minHumid: null,
+            maxHumid: null,
+            allLogs: []
         };
 
         let sensorChart = null;
 
         /**
-         * 비침습 토스트 메시지 표시 (alert() 대체)
+         * 비침습 토스트 메시지 출력 (alert() 대체)
          */
         function showToast(message, type = 'info') {
             const container = document.getElementById('toastContainer');
-            const toast = document.createElement('div');
+            if (!container) return;
 
             const colors = {
                 info: 'bg-slate-900 text-white border-slate-700',
@@ -426,7 +425,8 @@
                 error: 'bg-rose-600 text-white border-rose-500'
             };
 
-            toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl border shadow-lg text-xs sm:text-sm font-medium flex items-center gap-2 transform transition-all duration-300 translate-y-2 opacity-0 ${colors[type] || colors.info}`;
+            const toast = document.createElement('div');
+            toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl border shadow-lg text-xs sm:text-sm font-medium transition-all duration-300 transform translate-y-2 opacity-0 ${colors[type] || colors.info}`;
             toast.textContent = message;
 
             container.appendChild(toast);
@@ -438,75 +438,76 @@
             setTimeout(() => {
                 toast.classList.add('translate-y-2', 'opacity-0');
                 setTimeout(() => toast.remove(), 300);
-            }, 3000);
+            }, 2800);
         }
 
         /**
-         * 기상청 공식 불쾌지수(DI), 이슬점(℃), 실내 쾌적도 판정 계산
+         * 시간 포맷팅 유틸리티 (HH:MM:SS)
          */
-        function analyzeEnvironment(temp, humid) {
-            // 1. 기상청 불쾌지수 공식: DI = 0.81*T + 0.01*RH*(0.99*T - 14.3) + 46.3
+        function formatTime(date = new Date()) {
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        }
+
+        /**
+         * 기상청 공식 불쾌지수(DI) 및 이슬점(Dew Point) 계산
+         */
+        function calculateComfortMetrics(temp, humid) {
+            // 불쾌지수 공식: DI = 0.81 * T + 0.01 * RH * (0.99 * T - 14.3) + 46.3
             const di = 0.81 * temp + 0.01 * humid * (0.99 * temp - 14.3) + 46.3;
 
-            // 2. 이슬점 계산 (Magnus-Tetens 공식)
+            // Magnus-Tetens 이슬점 근사 공식
             const a = 17.27;
             const b = 237.7;
-            const alpha = ((a * temp) / (b + temp)) + Math.log(Math.max(humid, 1) / 100);
+            const safeHumid = Math.max(1, Math.min(100, humid));
+            const alpha = ((a * temp) / (b + temp)) + Math.log(safeHumid / 100.0);
             const dewPoint = (b * alpha) / (a - alpha);
 
-            // 3. 상태 판정 및 배지 스타일
-            let statusLabel = '적정';
-            let badgeClass = 'bg-sky-50 text-sky-700 border-sky-200';
+            let label = '매우 쾌적';
+            let badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
 
             if (humid < 35) {
-                statusLabel = '건조 주의';
+                label = '건조 주의';
                 badgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
-            } else if (humid > 65) {
-                statusLabel = '다습 주의';
-                badgeClass = 'bg-indigo-50 text-indigo-700 border-indigo-200';
-            } else if (di < 72 && temp >= 18 && temp <= 26 && humid >= 40 && humid <= 60) {
-                statusLabel = '매우 쾌적';
-                badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-            } else if (di >= 75) {
-                statusLabel = '불쾌 주의';
+            } else if (humid > 70) {
+                label = '다습 주의';
+                badgeClass = 'bg-sky-50 text-sky-700 border-sky-200';
+            } else if (di >= 80) {
+                label = '매우 불쾌';
                 badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+            } else if (di >= 75) {
+                label = '불쾌감 시작';
+                badgeClass = 'bg-orange-50 text-orange-700 border-orange-200';
+            } else if (di >= 68) {
+                label = '매우 쾌적';
+                badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
             } else {
-                statusLabel = '적정';
+                label = '선선·적정';
                 badgeClass = 'bg-teal-50 text-teal-700 border-teal-200';
             }
 
             return {
                 di: Number(di.toFixed(1)),
                 dewPoint: Number(dewPoint.toFixed(1)),
-                statusLabel,
+                label,
                 badgeClass
             };
         }
 
         /**
-         * 시간 포맷팅 (HH:MM:SS)
-         */
-        function formatTime(dateObj) {
-            return dateObj.toLocaleTimeString('ko-KR', {
-                hour12: false,
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
-        }
-
-        /**
-         * Chart.js 이중 축(Dual-Axis) 그라데이션 라인 차트 초기화
+         * Chart.js 이중 축(Dual-Axis) 라인 차트 초기화
          */
         function initChart() {
-            const ctx = document.getElementById('sensorChart').getContext('2d');
+            const canvas = document.getElementById('sensorChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
 
-            const tempGradient = ctx.createLinearGradient(0, 0, 0, 360);
-            tempGradient.addColorStop(0, 'rgba(244, 63, 94, 0.24)');
+            const tempGradient = ctx.createLinearGradient(0, 0, 0, 350);
+            tempGradient.addColorStop(0, 'rgba(244, 63, 94, 0.22)');
             tempGradient.addColorStop(1, 'rgba(244, 63, 94, 0.0)');
 
-            const humidGradient = ctx.createLinearGradient(0, 0, 0, 360);
-            humidGradient.addColorStop(0, 'rgba(14, 165, 233, 0.22)');
+            const humidGradient = ctx.createLinearGradient(0, 0, 0, 350);
+            humidGradient.addColorStop(0, 'rgba(14, 165, 233, 0.20)');
             humidGradient.addColorStop(1, 'rgba(14, 165, 233, 0.0)');
 
             sensorChart = new Chart(ctx, {
@@ -526,7 +527,7 @@
                             pointBorderColor: '#f43f5e',
                             pointBorderWidth: 2,
                             fill: true,
-                            tension: 0.38,
+                            tension: 0.35,
                             yAxisID: 'yTemp'
                         },
                         {
@@ -541,7 +542,7 @@
                             pointBorderColor: '#0ea5e9',
                             pointBorderWidth: 2,
                             fill: true,
-                            tension: 0.38,
+                            tension: 0.35,
                             yAxisID: 'yHumid'
                         }
                     ]
@@ -559,42 +560,20 @@
                             align: 'end',
                             labels: {
                                 usePointStyle: true,
-                                pointStyle: 'circle',
                                 boxWidth: 8,
-                                padding: 18,
                                 font: {
-                                    family: "'Pretendard', 'Inter', 'Noto Sans KR', sans-serif",
-                                    size: 13,
+                                    family: "'Pretendard', 'Inter', sans-serif",
+                                    size: 12,
                                     weight: '600'
-                                },
-                                color: '#334155'
+                                }
                             }
                         },
                         tooltip: {
                             backgroundColor: 'rgba(15, 23, 42, 0.92)',
-                            titleColor: '#f8fafc',
-                            bodyColor: '#f1f5f9',
                             padding: 12,
                             cornerRadius: 10,
-                            titleFont: {
-                                family: "'Pretendard', 'Inter', 'Noto Sans KR', sans-serif",
-                                size: 13,
-                                weight: '700'
-                            },
-                            bodyFont: {
-                                family: "'Pretendard', 'Inter', 'Noto Sans KR', sans-serif",
-                                size: 13
-                            },
-                            callbacks: {
-                                label: function(context) {
-                                    const label = context.dataset.label || '';
-                                    const val = context.parsed.y;
-                                    if (label.includes('온도')) {
-                                        return ` 온도: ${val.toFixed(1)} ℃`;
-                                    }
-                                    return ` 습도: ${val.toFixed(1)} %`;
-                                }
-                            }
+                            titleFont: { size: 12, weight: 'bold' },
+                            bodyFont: { size: 12 }
                         }
                     },
                     scales: {
@@ -605,63 +584,47 @@
                             ticks: {
                                 maxRotation: 0,
                                 autoSkip: true,
-                                maxTicksLimit: 10,
+                                maxTicksLimit: 8,
                                 color: '#64748b',
-                                font: {
-                                    family: "'Pretendard', 'Inter', 'Noto Sans KR', sans-serif",
-                                    size: 11
-                                }
+                                font: { size: 11 }
                             }
                         },
                         yTemp: {
                             type: 'linear',
-                            display: true,
                             position: 'left',
                             title: {
                                 display: true,
                                 text: '온도 (℃)',
                                 color: '#f43f5e',
-                                font: {
-                                    family: "'Pretendard', 'Inter', 'Noto Sans KR', sans-serif",
-                                    size: 12,
-                                    weight: '700'
-                                }
+                                font: { size: 11, weight: '600' }
                             },
-                            suggestedMin: 21,
-                            suggestedMax: 28,
+                            suggestedMin: 18,
+                            suggestedMax: 32,
                             grid: {
-                                color: '#f1f5f9',
-                                borderDash: [4, 4]
+                                color: '#f1f5f9'
                             },
                             ticks: {
-                                color: '#64748b',
-                                font: { size: 11 },
-                                callback: (val) => `${val}°`
+                                color: '#f43f5e',
+                                font: { size: 11 }
                             }
                         },
                         yHumid: {
                             type: 'linear',
-                            display: true,
                             position: 'right',
                             title: {
                                 display: true,
                                 text: '습도 (%)',
                                 color: '#0ea5e9',
-                                font: {
-                                    family: "'Pretendard', 'Inter', 'Noto Sans KR', sans-serif",
-                                    size: 12,
-                                    weight: '700'
-                                }
+                                font: { size: 11, weight: '600' }
                             },
-                            suggestedMin: 30,
-                            suggestedMax: 65,
+                            suggestedMin: 20,
+                            suggestedMax: 80,
                             grid: {
                                 drawOnChartArea: false
                             },
                             ticks: {
-                                color: '#64748b',
-                                font: { size: 11 },
-                                callback: (val) => `${val}%`
+                                color: '#0ea5e9',
+                                font: { size: 11 }
                             }
                         }
                     }
@@ -670,17 +633,137 @@
         }
 
         /**
-         * 시뮬레이션 데이터 생성기 (24.5℃, 45.0% 중심 자연스러운 변동)
+         * 새로운 측정값(온도, 습도, 시각)을 UI 카드, 차트, 로그 테이블에 반영
+         */
+        function updateDashboardWithReading(temp, humid, timeStr, isInitialSeed = false) {
+            const cleanTemp = Number(Number(temp).toFixed(1));
+            const cleanHumid = Number(Number(humid).toFixed(1));
+
+            // 금일 최저/최고 갱신
+            if (state.minTemp === null || cleanTemp < state.minTemp) state.minTemp = cleanTemp;
+            if (state.maxTemp === null || cleanTemp > state.maxTemp) state.maxTemp = cleanTemp;
+            if (state.minHumid === null || cleanHumid < state.minHumid) state.minHumid = cleanHumid;
+            if (state.maxHumid === null || cleanHumid > state.maxHumid) state.maxHumid = cleanHumid;
+
+            // 직전 대비 변화량 계산
+            const tempDelta = state.lastTemp !== null ? Number((cleanTemp - state.lastTemp).toFixed(1)) : 0.0;
+            const humidDelta = state.lastHumid !== null ? Number((cleanHumid - state.lastHumid).toFixed(1)) : 0.0;
+
+            state.lastTemp = cleanTemp;
+            state.lastHumid = cleanHumid;
+
+            // 불쾌지수 및 이슬점 계산
+            const comfort = calculateComfortMetrics(cleanTemp, cleanHumid);
+
+            // KPI 1: 온도 카드 업데이트
+            document.getElementById('kpiTempValue').textContent = cleanTemp.toFixed(1);
+            document.getElementById('tempMinVal').textContent = `${state.minTemp.toFixed(1)}℃`;
+            document.getElementById('tempMaxVal').textContent = `${state.maxTemp.toFixed(1)}℃`;
+
+            const tempDeltaBadge = document.getElementById('tempDeltaBadge');
+            if (tempDelta > 0) {
+                tempDeltaBadge.textContent = `+${tempDelta.toFixed(1)}℃`;
+                tempDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-600';
+            } else if (tempDelta < 0) {
+                tempDeltaBadge.textContent = `${tempDelta.toFixed(1)}℃`;
+                tempDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-600';
+            } else {
+                tempDeltaBadge.textContent = '0.0℃';
+                tempDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
+            }
+            const tempPercent = Math.max(0, Math.min(100, (cleanTemp / 40) * 100));
+            document.getElementById('tempProgressBar').style.width = `${tempPercent}%`;
+
+            // KPI 2: 습도 카드 업데이트
+            document.getElementById('kpiHumidValue').textContent = cleanHumid.toFixed(1);
+            document.getElementById('humidMinVal').textContent = `${state.minHumid.toFixed(1)}%`;
+            document.getElementById('humidMaxVal').textContent = `${state.maxHumid.toFixed(1)}%`;
+
+            const humidDeltaBadge = document.getElementById('humidDeltaBadge');
+            if (humidDelta > 0) {
+                humidDeltaBadge.textContent = `+${humidDelta.toFixed(1)}%`;
+                humidDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-600';
+            } else if (humidDelta < 0) {
+                humidDeltaBadge.textContent = `${humidDelta.toFixed(1)}%`;
+                humidDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-600';
+            } else {
+                humidDeltaBadge.textContent = '0.0%';
+                humidDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
+            }
+            const humidPercent = Math.max(0, Math.min(100, cleanHumid));
+            document.getElementById('humidProgressBar').style.width = `${humidPercent}%`;
+
+            // KPI 3: 쾌적도 & 불쾌지수 업데이트
+            document.getElementById('kpiDiValue').textContent = comfort.di.toFixed(1);
+            document.getElementById('kpiDewPoint').textContent = comfort.dewPoint.toFixed(1);
+            const comfortBadge = document.getElementById('comfortBadge');
+            comfortBadge.textContent = comfort.label;
+            comfortBadge.className = `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${comfort.badgeClass}`;
+
+            // KPI 4: 마지막 수신 시각 업데이트
+            document.getElementById('kpiLastUpdated').textContent = timeStr;
+
+            // 차트 데이터 추가 (최대 25개 유지)
+            if (sensorChart) {
+                if (sensorChart.data.labels.length >= state.maxChartPoints) {
+                    sensorChart.data.labels.shift();
+                    sensorChart.data.datasets[0].data.shift();
+                    sensorChart.data.datasets[1].data.shift();
+                }
+                sensorChart.data.labels.push(timeStr);
+                sensorChart.data.datasets[0].data.push(cleanTemp);
+                sensorChart.data.datasets[1].data.push(cleanHumid);
+                sensorChart.update(isInitialSeed ? 'none' : undefined);
+            }
+
+            // 전체 로그 저장 및 최근 10건 테이블 렌더링
+            state.allLogs.unshift({
+                time: timeStr,
+                temp: cleanTemp.toFixed(1),
+                humid: cleanHumid.toFixed(1),
+                di: comfort.di.toFixed(1),
+                label: comfort.label,
+                badgeClass: comfort.badgeClass
+            });
+
+            renderLogTable();
+        }
+
+        /**
+         * 최근 수신 로그 테이블 렌더링 (최신 10건)
+         */
+        function renderLogTable() {
+            const tbody = document.getElementById('logTableBody');
+            const countEl = document.getElementById('totalLogCount');
+            if (!tbody || !countEl) return;
+
+            countEl.textContent = state.allLogs.length;
+            const recentTen = state.allLogs.slice(0, 10);
+
+            tbody.innerHTML = recentTen.map((row, idx) => `
+                <tr class="${idx === 0 ? 'bg-sky-50/40' : 'hover:bg-slate-50'} transition-colors">
+                    <td class="py-3 px-4 sm:px-6 font-mono text-slate-600">${row.time}</td>
+                    <td class="py-3 px-4 sm:px-6 font-semibold text-rose-600">${row.temp} ℃</td>
+                    <td class="py-3 px-4 sm:px-6 font-semibold text-sky-600">${row.humid} %</td>
+                    <td class="py-3 px-4 sm:px-6 font-medium text-slate-700">${row.di}</td>
+                    <td class="py-3 px-4 sm:px-6">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${row.badgeClass}">
+                            ${row.label}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        /**
+         * 시뮬레이션 데이터 1회 생성
          */
         function generateSimulatedReading() {
-            const tempPull = (24.5 - state.simTemp) * 0.12;
-            const humidPull = (45.0 - state.simHumid) * 0.12;
+            const tempDelta = (Math.random() - 0.48) * 0.3;
+            const humidDelta = (Math.random() - 0.5) * 0.8;
 
-            state.simTemp += tempPull + (Math.random() - 0.5) * 0.36;
-            state.simHumid += humidPull + (Math.random() - 0.5) * 1.4;
-
-            state.simTemp = Math.min(35, Math.max(12, state.simTemp));
-            state.simHumid = Math.min(85, Math.max(22, state.simHumid));
+            state.simTemp = Math.max(19.0, Math.min(31.0, state.simTemp + tempDelta));
+            state.simHumid = Math.max(30.0, Math.min(75.0, state.simHumid + humidDelta));
 
             return {
                 temperature: Number(state.simTemp.toFixed(1)),
@@ -689,195 +772,95 @@
         }
 
         /**
-         * 측정값 반영 및 전체 대시보드 UI 갱신
+         * 데이터 수집 실행 (모드에 따라 시뮬레이션 또는 FastAPI 호출)
          */
-        function ingestDataPoint(temp, humid, customDate = null) {
-            const timestamp = customDate || new Date();
-            const timeStr = formatTime(timestamp);
-
-            const tempDelta = state.prevTemp !== null ? Number((temp - state.prevTemp).toFixed(1)) : 0.0;
-            const humidDelta = state.prevHumid !== null ? Number((humid - state.prevHumid).toFixed(1)) : 0.0;
-
-            state.prevTemp = temp;
-            state.prevHumid = humid;
-
-            if (temp < state.minTemp) state.minTemp = temp;
-            if (temp > state.maxTemp) state.maxTemp = temp;
-            if (humid < state.minHumid) state.minHumid = humid;
-            if (humid > state.maxHumid) state.maxHumid = humid;
-
-            const analysis = analyzeEnvironment(temp, humid);
-
-            // KPI 카드 수치 갱신
-            document.getElementById('kpiTempValue').textContent = temp.toFixed(1);
-            document.getElementById('kpiHumidValue').textContent = humid.toFixed(1);
-            document.getElementById('kpiDiValue').textContent = analysis.di.toFixed(1);
-            document.getElementById('kpiDewPoint').textContent = analysis.dewPoint.toFixed(1);
-            document.getElementById('kpiLastUpdated').textContent = timeStr;
-
-            // 최저/최고 및 시각적 게이지 바 갱신
-            document.getElementById('tempMinVal').textContent = `${state.minTemp.toFixed(1)}℃`;
-            document.getElementById('tempMaxVal').textContent = `${state.maxTemp.toFixed(1)}℃`;
-            const tempPercent = Math.min(100, Math.max(0, (temp / 40) * 100));
-            document.getElementById('tempProgressBar').style.width = `${tempPercent}%`;
-
-            document.getElementById('humidMinVal').textContent = `${state.minHumid.toFixed(1)}%`;
-            document.getElementById('humidMaxVal').textContent = `${state.maxHumid.toFixed(1)}%`;
-            const humidPercent = Math.min(100, Math.max(0, humid));
-            document.getElementById('humidProgressBar').style.width = `${humidPercent}%`;
-
-            // 증감 배지 갱신
-            updateDeltaBadge('tempDeltaBadge', tempDelta, '℃');
-            updateDeltaBadge('humidDeltaBadge', humidDelta, '%');
-
-            // 쾌적도 상태 배지 갱신
-            const comfortBadge = document.getElementById('comfortBadge');
-            comfortBadge.textContent = analysis.statusLabel;
-            comfortBadge.className = `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${analysis.badgeClass}`;
-
-            // 차트 포인트 추가 (최대 25개 유지)
-            if (sensorChart.data.labels.length >= state.maxChartPoints) {
-                sensorChart.data.labels.shift();
-                sensorChart.data.datasets[0].data.shift();
-                sensorChart.data.datasets[1].data.shift();
-            }
-            sensorChart.data.labels.push(timeStr);
-            sensorChart.data.datasets[0].data.push(temp);
-            sensorChart.data.datasets[1].data.push(humid);
-            sensorChart.update('none');
-
-            // 로그 배열에 최신 순 저장
-            const logEntry = {
-                time: timeStr,
-                temp: temp.toFixed(1),
-                humid: humid.toFixed(1),
-                di: analysis.di.toFixed(1),
-                dewPoint: analysis.dewPoint.toFixed(1),
-                statusLabel: analysis.statusLabel,
-                badgeClass: analysis.badgeClass,
-                source: state.mode === 'simulation' ? '시뮬레이터' : 'FastAPI REST'
-            };
-
-            state.allLogs.unshift(logEntry);
-            renderLogTable();
-        }
-
-        /**
-         * 증감 배지 스타일링
-         */
-        function updateDeltaBadge(elementId, delta, unit) {
-            const el = document.getElementById(elementId);
-            if (delta > 0) {
-                el.textContent = `+${delta.toFixed(1)}${unit}`;
-                el.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-600';
-            } else if (delta < 0) {
-                el.textContent = `${delta.toFixed(1)}${unit}`;
-                el.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-600';
-            } else {
-                el.textContent = `0.0${unit}`;
-                el.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
-            }
-        }
-
-        /**
-         * 최근 10건 수신 로그 테이블 렌더링
-         */
-        function renderLogTable() {
-            const tbody = document.getElementById('logTableBody');
-            const recentLogs = state.allLogs.slice(0, state.maxTableRows);
-            document.getElementById('totalLogCount').textContent = state.allLogs.length;
-
-            if (recentLogs.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="5" class="py-8 text-center text-slate-400 text-sm">
-                            수신된 센서 데이터가 없습니다.
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-
-            tbody.innerHTML = recentLogs.map((row, idx) => `
-                <tr class="${idx === 0 ? 'bg-sky-50/40' : 'hover:bg-slate-50'} transition-colors">
-                    <td class="py-3 px-4 sm:px-6 font-mono text-slate-700 font-medium whitespace-nowrap">
-                        ${row.time}
-                        ${idx === 0 ? '<span class="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-sky-100 text-sky-700 rounded">최신</span>' : ''}
-                    </td>
-                    <td class="py-3 px-4 sm:px-6 font-semibold text-rose-600 whitespace-nowrap">${row.temp} ℃</td>
-                    <td class="py-3 px-4 sm:px-6 font-semibold text-sky-600 whitespace-nowrap">${row.humid} %</td>
-                    <td class="py-3 px-4 sm:px-6 text-slate-700 font-medium whitespace-nowrap">${row.di}</td>
-                    <td class="py-3 px-4 sm:px-6 whitespace-nowrap">
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${row.badgeClass}">
-                            ${row.statusLabel}
-                        </span>
-                    </td>
-                </tr>
-            `).join('');
-        }
-
-        /**
-         * 데이터 수집 사이클 (시뮬레이션 또는 FastAPI 서버 호출)
-         */
-        async function fetchAndProcessData() {
-            const errorBanner = document.getElementById('errorBanner');
+        async function fetchAndUpdate() {
+            const nowStr = formatTime(new Date());
 
             if (state.mode === 'simulation') {
-                errorBanner.classList.add('hidden');
-                const reading = generateSimulatedReading();
-                ingestDataPoint(reading.temperature, reading.humidity);
+                hideErrorBanner();
+                const sim = generateSimulatedReading();
+                updateDashboardWithReading(sim.temperature, sim.humidity, nowStr);
                 return;
             }
 
             // 실제 FastAPI 서버 연동 모드
             try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-
                 const response = await fetch(state.apiUrl, {
                     method: 'GET',
-                    headers: { 'Accept': 'application/json' },
-                    signal: controller.signal
+                    headers: { 'Accept': 'application/json' }
                 });
-                clearTimeout(timeoutId);
 
                 if (!response.ok) {
-                    throw new Error(`HTTP 오류 상태 코드: ${response.status}`);
+                    throw new Error(`HTTP 상태 코드 ${response.status} 응답을 받았습니다.`);
                 }
 
                 const data = await response.json();
 
-                // FastAPI 백엔드에서 Tuya API 호출이 실패하여 success: false를 반환한 경우 처리
                 if (data.success === false) {
-                    const tuyaDetail = data.raw && (data.raw.msg || data.raw.code)
-                        ? ` (Tuya 응답: ${data.raw.msg || ''} ${data.raw.code ? `[코드: ${data.raw.code}]` : ''})`
-                        : '';
-                    throw new Error(`Tuya 클라우드 데이터 조회 실패 (success: false)${tuyaDetail}`);
+                    const rawMsg = data.raw && data.raw.msg ? ` (Tuya 응답: ${data.raw.msg} [코드: ${data.raw.code || 'N/A'}])` : '';
+                    throw new Error(`Tuya 클라우드 데이터 조회 실패 (success: false)${rawMsg}`);
                 }
 
                 if (typeof data.temperature !== 'number' || typeof data.humidity !== 'number') {
-                    throw new Error('응답 JSON에 숫자형 temperature 또는 humidity 필드가 없습니다.');
+                    throw new Error('응답 JSON에 유효한 temperature 또는 humidity 숫자 필드가 없습니다.');
                 }
 
-                errorBanner.classList.add('hidden');
-                ingestDataPoint(Number(data.temperature.toFixed(1)), Number(data.humidity.toFixed(1)));
+                hideErrorBanner();
+                updateLiveBadgeStatus('connected');
+                updateDashboardWithReading(data.temperature, data.humidity, nowStr);
             } catch (err) {
-                const errorDetail = document.getElementById('errorDetailText');
-                errorDetail.textContent = `요청 주소(${state.apiUrl}) 오류: ${err.name === 'AbortError' ? '서버 응답 시간 초과 (5초)' : err.message}`;
-                errorBanner.classList.remove('hidden');
+                showErrorBanner(err.message);
+                updateLiveBadgeStatus('error');
             }
         }
 
         /**
-         * 폴링 타이머 시작/갱신
+         * 오류 배너 표시 / 숨김
          */
-        function startPolling() {
-            if (state.timerId) {
-                clearInterval(state.timerId);
-                state.timerId = null;
+        function showErrorBanner(detailMsg) {
+            const banner = document.getElementById('errorBanner');
+            const detail = document.getElementById('errorDetailText');
+            if (banner && detail) {
+                detail.textContent = `요청 주소(${state.apiUrl}) 오류: ${detailMsg}`;
+                banner.classList.remove('hidden');
             }
-            if (!state.isPaused) {
-                state.timerId = setInterval(fetchAndProcessData, state.pollingIntervalMs);
+        }
+
+        function hideErrorBanner() {
+            const banner = document.getElementById('errorBanner');
+            if (banner) {
+                banner.classList.add('hidden');
+            }
+        }
+
+        /**
+         * 상단 실시간 수신 상태 배지 업데이트
+         */
+        function updateLiveBadgeStatus(status) {
+            const badge = document.getElementById('liveStatusBadge');
+            const pulse = document.getElementById('livePulseWrapper');
+            const text = document.getElementById('liveStatusText');
+            if (!badge || !pulse || !text) return;
+
+            if (state.isPaused) {
+                badge.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200';
+                pulse.innerHTML = '<span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>';
+                text.textContent = '수신 일시정지됨';
+                return;
+            }
+
+            if (status === 'error') {
+                badge.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-rose-50 text-rose-700 border border-rose-200';
+                pulse.innerHTML = '<span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>';
+                text.textContent = '서버 연결 오류';
+            } else {
+                badge.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200';
+                pulse.innerHTML = `
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                `;
+                text.textContent = '실시간 수신 중';
             }
         }
 
@@ -891,66 +874,80 @@
             const btnLive = document.getElementById('btnModeLive');
             const configPanel = document.getElementById('fastapiConfigPanel');
             const sourceBadge = document.getElementById('dataSourceBadge');
-            const errorBanner = document.getElementById('errorBanner');
 
             if (newMode === 'simulation') {
                 btnSim.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-white text-slate-900 shadow-sm';
                 btnLive.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-600 hover:text-slate-900';
                 configPanel.classList.add('hidden');
-                errorBanner.classList.add('hidden');
-
                 sourceBadge.textContent = '시뮬레이터';
                 sourceBadge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200';
+                hideErrorBanner();
+                updateLiveBadgeStatus('connected');
                 showToast('시뮬레이션 모드로 전환되었습니다.', 'info');
             } else {
                 btnLive.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-white text-slate-900 shadow-sm';
                 btnSim.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-600 hover:text-slate-900';
                 configPanel.classList.remove('hidden');
-
-                sourceBadge.textContent = 'FastAPI REST';
+                sourceBadge.textContent = 'FastAPI 실시간';
                 sourceBadge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200';
-                showToast('실제 FastAPI 서버 연동 모드로 전환되었습니다.', 'info');
+                showToast(`실제 FastAPI 서버(${state.apiUrl}) 연동을 시도합니다.`, 'info');
             }
 
-            fetchAndProcessData();
-            startPolling();
+            fetchAndUpdate();
         }
 
         /**
-         * FastAPI API URL 적용
+         * 백엔드 API URL 적용
          */
         function applyApiUrl() {
             const input = document.getElementById('apiUrlInput');
+            if (!input) return;
             const trimmed = input.value.trim();
             if (!trimmed) {
-                showToast('올바른 API URL을 입력해주세요.', 'warning');
+                showToast('유효한 API URL을 입력해 주세요.', 'warning');
                 return;
             }
             state.apiUrl = trimmed;
-            showToast('백엔드 API URL이 적용되었습니다. 데이터를 요청합니다...', 'success');
-            fetchAndProcessData();
+            showToast(`API 주소가 '${state.apiUrl}'로 적용되었습니다.`, 'success');
+            fetchAndUpdate();
         }
 
         /**
-         * 폴링 갱신 주기 변경
+         * 폴링 타이머 시작/재시작
+         */
+        function startPolling() {
+            if (state.timerId) {
+                clearInterval(state.timerId);
+            }
+            state.timerId = setInterval(() => {
+                if (!state.isPaused) {
+                    fetchAndUpdate();
+                }
+            }, state.pollingIntervalMs);
+        }
+
+        /**
+         * 갱신 주기 변경
          */
         function changePollingInterval() {
             const select = document.getElementById('intervalSelect');
+            if (!select) return;
             state.pollingIntervalMs = Number(select.value);
             startPolling();
             showToast(`갱신 주기가 ${state.pollingIntervalMs / 1000}초로 변경되었습니다.`, 'info');
         }
 
         /**
-         * 즉시 갱신 버튼
+         * 즉시 갱신 버튼 클릭
          */
         function manualRefresh() {
             const icon = document.getElementById('refreshIcon');
-            icon.classList.add('rotate-180');
-            setTimeout(() => icon.classList.remove('rotate-180'), 500);
-
-            fetchAndProcessData();
-            showToast('센서 데이터를 즉시 갱신했습니다.', 'success');
+            if (icon) {
+                icon.classList.add('rotate-180');
+                setTimeout(() => icon.classList.remove('rotate-180'), 500);
+            }
+            fetchAndUpdate();
+            showToast('최신 데이터를 갱신했습니다.', 'success');
         }
 
         /**
@@ -958,41 +955,20 @@
          */
         function togglePause() {
             state.isPaused = !state.isPaused;
-
-            const badge = document.getElementById('liveStatusBadge');
-            const pulseWrapper = document.getElementById('livePulseWrapper');
-            const statusText = document.getElementById('liveStatusText');
             const btn = document.getElementById('btnPauseResume');
-            const btnText = document.getElementById('pauseResumeText');
-            const pauseIcon = document.getElementById('pauseIcon');
+            const text = document.getElementById('pauseResumeText');
 
             if (state.isPaused) {
-                if (state.timerId) clearInterval(state.timerId);
-
-                badge.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200';
-                pulseWrapper.innerHTML = '<span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>';
-                statusText.textContent = '일시정지';
-
-                btn.className = 'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-600 text-xs sm:text-sm font-semibold transition-all shadow-sm';
-                btnText.textContent = '재개';
-                pauseIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />';
-
-                showToast('실시간 데이터 수신이 일시정지되었습니다.', 'warning');
+                btn.className = 'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs sm:text-sm font-semibold transition-all';
+                text.textContent = '수신 재개';
+                updateLiveBadgeStatus('paused');
+                showToast('데이터 자동 갱신이 일시정지되었습니다.', 'warning');
             } else {
-                badge.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200';
-                pulseWrapper.innerHTML = `
-                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                `;
-                statusText.textContent = '실시간 수신 중';
-
                 btn.className = 'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs sm:text-sm font-semibold transition-all';
-                btnText.textContent = '일시정지';
-                pauseIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />';
-
-                fetchAndProcessData();
-                startPolling();
-                showToast('실시간 데이터 수신을 재개합니다.', 'success');
+                text.textContent = '일시정지';
+                updateLiveBadgeStatus('connected');
+                fetchAndUpdate();
+                showToast('데이터 자동 갱신을 재개합니다.', 'success');
             }
         }
 
@@ -1000,77 +976,73 @@
          * 차트 및 로그 초기화
          */
         function resetChartAndLogs() {
-            sensorChart.data.labels = [];
-            sensorChart.data.datasets[0].data = [];
-            sensorChart.data.datasets[1].data = [];
-            sensorChart.update();
-
             state.allLogs = [];
-            state.prevTemp = null;
-            state.prevHumid = null;
-            state.minTemp = Infinity;
-            state.maxTemp = -Infinity;
-            state.minHumid = Infinity;
-            state.maxHumid = -Infinity;
+            state.minTemp = null;
+            state.maxTemp = null;
+            state.minHumid = null;
+            state.maxHumid = null;
+            state.lastTemp = null;
+            state.lastHumid = null;
+
+            if (sensorChart) {
+                sensorChart.data.labels = [];
+                sensorChart.data.datasets[0].data = [];
+                sensorChart.data.datasets[1].data = [];
+                sensorChart.update();
+            }
 
             renderLogTable();
-            fetchAndProcessData();
-            showToast('차트와 수신 로그가 초기화되었습니다.', 'info');
+            fetchAndUpdate();
+            showToast('차트와 수신 기록이 초기화되었습니다.', 'info');
         }
 
         /**
-         * 엑셀 한글 호환(UTF-8 BOM) CSV 내보내기
+         * 수집된 데이터를 CSV 파일로 내보내기 (엑셀 한글 호환 UTF-8 BOM 포함)
          */
         function exportCSV() {
             if (state.allLogs.length === 0) {
-                showToast('내보낼 데이터가 없습니다.', 'warning');
+                showToast('내보낼 측정 데이터가 없습니다.', 'warning');
                 return;
             }
 
-            const headers = ['수신 시각', '온도(℃)', '습도(%)', '불쾌지수(DI)', '이슬점(℃)', '상태 판정', '데이터 소스'];
-            const rows = state.allLogs.map(log => [
-                log.time,
-                log.temp,
-                log.humid,
-                log.di,
-                log.dewPoint,
-                log.statusLabel,
-                log.source
+            const headers = ['수신시각', '온도(℃)', '습도(%)', '불쾌지수(DI)', '상태판정'];
+            const rows = state.allLogs.map(item => [
+                item.time,
+                item.temp,
+                item.humid,
+                item.di,
+                item.label
             ]);
 
-            const csvContent = '\uFEFF' + [
-                headers.join(','),
-                ...rows.map(r => r.join(','))
-            ].join('\n');
-
+            const csvContent = '\uFEFF' + [headers, ...rows].map(e => e.join(',')).join('\n');
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            const nowStr = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
 
+            const now = new Date();
+            const fileName = `smartlife_sensor_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.csv`;
+
+            const link = document.createElement('a');
             link.setAttribute('href', url);
-            link.setAttribute('download', `smartlife_sensor_logs_${nowStr}.csv`);
+            link.setAttribute('download', fileName);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
 
-            showToast(`총 ${state.allLogs.length}건의 데이터를 CSV로 내보냈습니다.`, 'success');
+            showToast(`총 ${state.allLogs.length}건의 기록을 CSV로 저장했습니다.`, 'success');
         }
 
         /**
-         * 초기 로드 시 8개의 과거 시계열 데이터 생성 및 폴링 시작
+         * 초기 로드 시 과거 8개 데이터 시드 생성 후 실시간 타이머 시작
          */
         window.addEventListener('DOMContentLoaded', () => {
             initChart();
 
             const now = Date.now();
-            const initialCount = 8;
-
-            for (let i = initialCount - 1; i >= 0; i--) {
+            for (let i = 7; i >= 0; i--) {
                 const pastDate = new Date(now - i * state.pollingIntervalMs);
-                const reading = generateSimulatedReading();
-                ingestDataPoint(reading.temperature, reading.humidity, pastDate);
+                const sim = generateSimulatedReading();
+                updateDashboardWithReading(sim.temperature, sim.humidity, formatTime(pastDate), true);
             }
 
             startPolling();
