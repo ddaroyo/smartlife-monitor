@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+가<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -154,10 +154,14 @@
                     </label>
                     <select id="intervalSelect" onchange="changePollingInterval()"
                         class="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer">
-                        <option value="3000" selected>3초 (기본)</option>
-                        <option value="5000">5초</option>
                         <option value="10000">10초</option>
                         <option value="30000">30초</option>
+                        <option value="60000">1분</option>
+                        <option value="300000">5분</option>
+                        <option value="600000">10분</option>
+                        <option value="1800000">30분</option>
+                        <option value="3600000" selected>1시간 (기본)</option>
+                        <option value="7200000">2시간</option>
                     </select>
                 </div>
 
@@ -394,7 +398,7 @@
         const state = {
             mode: 'simulation', // 'simulation' | 'fastapi'
             apiUrl: '/api/sensor',
-            pollingIntervalMs: 3000,
+            pollingIntervalMs: 3600000,
             isPaused: false,
             timerId: null,
             maxChartPoints: 25,
@@ -934,7 +938,10 @@
             if (!select) return;
             state.pollingIntervalMs = Number(select.value);
             startPolling();
-            showToast(`갱신 주기가 ${state.pollingIntervalMs / 1000}초로 변경되었습니다.`, 'info');
+
+            const selectedLabel = select.options[select.selectedIndex].text.replace(' (기본)', '');
+            const josa = selectedLabel.endsWith('초') ? '로' : '으로';
+            showToast(`갱신 주기가 ${selectedLabel}${josa} 변경되었습니다.`, 'info');
         }
 
         /**
