@@ -1,9 +1,9 @@
-가<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Life 실시간 온습도 대시보드</title>
+    <title>Smart Life 실시간 온습도 대시보드 (다중 센서)</title>
 
     <!-- 웹 폰트: Inter & Pretendard / Noto Sans KR -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -34,12 +34,10 @@
             background-color: #f8fafc;
         }
 
-        /* 게이지 바 및 수치 부드러운 전환 */
         .smooth-transition {
             transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* 커스텀 스크롤바 */
         ::-webkit-scrollbar {
             width: 6px;
             height: 6px;
@@ -58,7 +56,7 @@
 </head>
 <body class="text-slate-800 antialiased min-h-screen flex flex-col">
 
-    <!-- 비침습 토스트 메시지 컨테이너 (alert() 대체) -->
+    <!-- 비침습 토스트 메시지 컨테이너 -->
     <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
     <!-- 대시보드 메인 컨테이너 -->
@@ -81,18 +79,17 @@
                             </h1>
                             <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                                 <span class="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
-                                시험실 온습도계 · Tuya Cloud
+                                보관실 · 시험실1 · 시험실2
                             </span>
                         </div>
                         <p class="text-xs sm:text-sm text-slate-500 mt-1">
-                            실시간 환경 데이터 수집 · 기상청 공식 불쾌지수(DI) 및 이슬점 자동 분석
+                            3개 구역 통합 모니터링 · 기상청 공식 불쾌지수(DI) 및 이슬점 자동 분석
                         </p>
                     </div>
                 </div>
 
                 <!-- 우측 연결 상태 및 모드 전환 스위치 -->
                 <div class="flex flex-wrap items-center gap-3">
-                    <!-- 실시간 수신 상태 표시 배지 -->
                     <div id="liveStatusBadge" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         <span id="livePulseWrapper" class="relative flex h-2.5 w-2.5">
                             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -101,7 +98,6 @@
                         <span id="liveStatusText">실시간 수신 중</span>
                     </div>
 
-                    <!-- 시뮬레이션 / 실제 FastAPI 서버 연동 전환 스위치 -->
                     <div class="inline-flex p-1 rounded-xl bg-slate-100 border border-slate-200" role="group" aria-label="데이터 수신 모드 선택">
                         <button type="button" id="btnModeSim" onclick="setMode('simulation')"
                             class="px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-white text-slate-900 shadow-sm">
@@ -126,8 +122,8 @@
                             백엔드 API URL:
                         </label>
                         <div class="flex items-center gap-2 flex-1">
-                            <input type="text" id="apiUrlInput" value="/api/sensor"
-                                placeholder="/api/sensor"
+                            <input type="text" id="apiUrlInput" value="/api/sensors"
+                                placeholder="/api/sensors"
                                 class="w-full px-3 py-2 text-xs sm:text-sm bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500" />
                             <button type="button" onclick="applyApiUrl()"
                                 class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white text-xs sm:text-sm font-semibold whitespace-nowrap transition-all shadow-sm">
@@ -136,15 +132,14 @@
                         </div>
                     </div>
                     <div class="text-xs text-slate-500 flex items-center gap-1.5">
-                        <span>기대 응답:</span>
-                        <code class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-mono">{"success": true, "temperature": 24.5, "humidity": 45.0}</code>
+                        <span>다중 센서 응답:</span>
+                        <code class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-mono">{"sensors": {"storage", "lab1", "lab2"}}</code>
                     </div>
                 </div>
             </div>
 
-            <!-- 실시간 제어 툴바 (갱신 주기, 즉시 갱신, 일시정지/재개, CSV 내보내기) -->
+            <!-- 실시간 제어 툴바 -->
             <div class="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-                <!-- 왼쪽: 폴링 주기 선택 -->
                 <div class="flex items-center gap-2.5">
                     <label for="intervalSelect" class="text-xs sm:text-sm font-medium text-slate-600 flex items-center gap-1.5">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -165,19 +160,18 @@
                     </select>
                 </div>
 
-                <!-- 오른쪽: 제어 버튼 그룹 -->
                 <div class="flex flex-wrap items-center gap-2">
                     <button type="button" onclick="manualRefresh()"
                         class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 border border-slate-200 text-xs sm:text-sm font-semibold transition-all shadow-sm">
                         <svg id="refreshIcon" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-500 transition-transform duration-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
-                        즉시 갱신
+                        전체 즉시 갱신
                     </button>
 
                     <button type="button" id="btnPauseResume" onclick="togglePause()"
                         class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs sm:text-sm font-semibold transition-all">
-                        <svg id="pauseIcon" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         <span id="pauseResumeText">일시정지</span>
@@ -194,7 +188,7 @@
             </div>
         </header>
 
-        <!-- FastAPI 연동 실패 또는 success: false 응답 시 표시되는 오류 배너 -->
+        <!-- 오류 배너 -->
         <div id="errorBanner" class="hidden bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 shadow-sm">
             <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                 <div class="flex items-start gap-3">
@@ -209,9 +203,8 @@
                             요청하신 API 엔드포인트에서 유효한 센서 응답을 받지 못했습니다.
                         </p>
                         <ul class="text-xs text-rose-700 list-disc list-inside space-y-1 pt-1">
-                            <li><strong>서버 미실행:</strong> 터미널에서 <code class="bg-rose-100 px-1.5 py-0.5 rounded font-mono">uvicorn main:app --reload</code> 명령으로 FastAPI 서버가 실행 중인지 확인하세요.</li>
-                            <li><strong>Tuya 인증/권한 오류 (<code class="font-mono">success: false</code>):</strong> <code class="bg-rose-100 px-1.5 py-0.5 rounded font-mono">main.py</code>의 <code class="font-mono">ACCESS_SECRET</code>, <code class="font-mono">DEVICE_ID</code> 값과 Tuya 플랫폼의 <code class="font-mono">Service API(IoT Core)</code> 구독 상태를 확인하세요.</li>
-                            <li><strong>보안/CORS 정책:</strong> <code class="bg-rose-100 px-1.5 py-0.5 rounded font-mono">CORSMiddleware</code> 허용 여부 및 로컬 파일(<code class="font-mono">index.html</code>)로 열었는지 확인하세요.</li>
+                            <li><strong>환경 변수 확인:</strong> Render 대시보드 <code class="bg-rose-100 px-1.5 py-0.5 rounded font-mono">Environment</code> 메뉴에 <code class="font-mono">DEVICE_ID_STORAGE</code>, <code class="font-mono">DEVICE_ID_LAB1</code>, <code class="font-mono">DEVICE_ID_LAB2</code>가 올바르게 등록되었는지 확인하세요.</li>
+                            <li><strong>백엔드 업데이트 확인:</strong> GitHub의 <code class="bg-rose-100 px-1.5 py-0.5 rounded font-mono">main.py</code>가 다중 센서(<code class="font-mono">/api/sensors</code>) 버전으로 배포되었는지 확인하세요.</li>
                         </ul>
                     </div>
                 </div>
@@ -224,8 +217,133 @@
             </div>
         </div>
 
-        <!-- 2. 4열 KPI 요약 카드 그리드 -->
-        <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5" aria-label="주요 환경 지표 요약">
+        <!-- 2. 3개 구역 한눈에 보기 (클릭하여 상세 보기 전환) -->
+        <section aria-label="전체 구역 현황 요약">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-sm sm:text-base font-bold text-slate-800 flex items-center gap-2">
+                    <span>구역별 실시간 현황</span>
+                    <span class="text-xs font-normal text-slate-500">카드를 클릭하면 아래 상세 차트와 로그가 전환됩니다</span>
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="roomOverviewGrid">
+                <!-- 보관실 카드 -->
+                <button type="button" id="roomCard-storage" onclick="selectRoom('storage')"
+                    class="text-left bg-white rounded-2xl border-2 border-slate-200 hover:border-sky-300 p-5 shadow-sm transition-all cursor-pointer focus:outline-none">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-violet-500"></span>
+                            <span class="text-base font-bold text-slate-900">보관실</span>
+                        </div>
+                        <span id="roomStatus-storage" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                            대기 중
+                        </span>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-4">
+                        <div>
+                            <span class="text-[11px] font-medium text-slate-400 block">온도</span>
+                            <div class="flex items-baseline gap-1">
+                                <span id="roomTemp-storage" class="text-2xl sm:text-3xl font-bold text-slate-900">--</span>
+                                <span class="text-sm font-semibold text-rose-500">℃</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[11px] font-medium text-slate-400 block">습도</span>
+                            <div class="flex items-baseline justify-end gap-1">
+                                <span id="roomHumid-storage" class="text-2xl sm:text-3xl font-bold text-slate-900">--</span>
+                                <span class="text-sm font-semibold text-sky-500">%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                        <span id="roomComfort-storage" class="font-semibold text-slate-500">--</span>
+                        <span id="roomTime-storage" class="font-mono text-slate-400">--:--:--</span>
+                    </div>
+                </button>
+
+                <!-- 시험실1 카드 -->
+                <button type="button" id="roomCard-lab1" onclick="selectRoom('lab1')"
+                    class="text-left bg-white rounded-2xl border-2 border-sky-500 ring-2 ring-sky-500/20 p-5 shadow-sm transition-all cursor-pointer focus:outline-none">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
+                            <span class="text-base font-bold text-slate-900">시험실1</span>
+                        </div>
+                        <span id="roomStatus-lab1" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                            대기 중
+                        </span>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-4">
+                        <div>
+                            <span class="text-[11px] font-medium text-slate-400 block">온도</span>
+                            <div class="flex items-baseline gap-1">
+                                <span id="roomTemp-lab1" class="text-2xl sm:text-3xl font-bold text-slate-900">--</span>
+                                <span class="text-sm font-semibold text-rose-500">℃</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[11px] font-medium text-slate-400 block">습도</span>
+                            <div class="flex items-baseline justify-end gap-1">
+                                <span id="roomHumid-lab1" class="text-2xl sm:text-3xl font-bold text-slate-900">--</span>
+                                <span class="text-sm font-semibold text-sky-500">%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                        <span id="roomComfort-lab1" class="font-semibold text-slate-500">--</span>
+                        <span id="roomTime-lab1" class="font-mono text-slate-400">--:--:--</span>
+                    </div>
+                </button>
+
+                <!-- 시험실2 카드 -->
+                <button type="button" id="roomCard-lab2" onclick="selectRoom('lab2')"
+                    class="text-left bg-white rounded-2xl border-2 border-slate-200 hover:border-sky-300 p-5 shadow-sm transition-all cursor-pointer focus:outline-none">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                            <span class="text-base font-bold text-slate-900">시험실2</span>
+                        </div>
+                        <span id="roomStatus-lab2" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                            대기 중
+                        </span>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-4">
+                        <div>
+                            <span class="text-[11px] font-medium text-slate-400 block">온도</span>
+                            <div class="flex items-baseline gap-1">
+                                <span id="roomTemp-lab2" class="text-2xl sm:text-3xl font-bold text-slate-900">--</span>
+                                <span class="text-sm font-semibold text-rose-500">℃</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[11px] font-medium text-slate-400 block">습도</span>
+                            <div class="flex items-baseline justify-end gap-1">
+                                <span id="roomHumid-lab2" class="text-2xl sm:text-3xl font-bold text-slate-900">--</span>
+                                <span class="text-sm font-semibold text-sky-500">%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                        <span id="roomComfort-lab2" class="font-semibold text-slate-500">--</span>
+                        <span id="roomTime-lab2" class="font-mono text-slate-400">--:--:--</span>
+                    </div>
+                </button>
+            </div>
+        </section>
+
+        <!-- 선택된 구역 상세 헤더 -->
+        <div class="flex items-center justify-between pt-1">
+            <div class="flex items-center gap-2.5">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-900 text-white text-xs sm:text-sm font-bold shadow-sm">
+                    <span id="selectedRoomDot" class="w-2 h-2 rounded-full bg-sky-400"></span>
+                    <span id="selectedRoomTitle">시험실1</span> 상세 분석
+                </span>
+                <span id="selectedRoomSubMsg" class="text-xs text-slate-500">선택된 센서의 상세 지표 및 변화 추이입니다.</span>
+            </div>
+        </div>
+
+        <!-- 3. 선택된 구역 4열 KPI 요약 카드 그리드 -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5" aria-label="선택된 구역 주요 환경 지표">
 
             <!-- KPI 1: 현재 온도 -->
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between">
@@ -237,18 +355,18 @@
                         </span>
                     </div>
                     <div class="mt-3 flex items-baseline gap-1.5">
-                        <span id="kpiTempValue" class="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">24.5</span>
+                        <span id="kpiTempValue" class="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">--</span>
                         <span class="text-lg font-semibold text-rose-500">℃</span>
                     </div>
                 </div>
 
                 <div class="mt-4 pt-3 border-t border-slate-100 space-y-2">
                     <div class="flex items-center justify-between text-xs text-slate-500">
-                        <span>금일 최저 <strong id="tempMinVal" class="text-slate-700 font-semibold">24.1℃</strong></span>
-                        <span>금일 최고 <strong id="tempMaxVal" class="text-slate-700 font-semibold">24.8℃</strong></span>
+                        <span>금일 최저 <strong id="tempMinVal" class="text-slate-700 font-semibold">--℃</strong></span>
+                        <span>금일 최고 <strong id="tempMaxVal" class="text-slate-700 font-semibold">--℃</strong></span>
                     </div>
                     <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div id="tempProgressBar" class="h-full bg-gradient-to-r from-orange-400 to-rose-500 rounded-full smooth-transition" style="width: 61.25%;"></div>
+                        <div id="tempProgressBar" class="h-full bg-gradient-to-r from-orange-400 to-rose-500 rounded-full smooth-transition" style="width: 0%;"></div>
                     </div>
                 </div>
             </div>
@@ -263,18 +381,18 @@
                         </span>
                     </div>
                     <div class="mt-3 flex items-baseline gap-1.5">
-                        <span id="kpiHumidValue" class="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">45.0</span>
+                        <span id="kpiHumidValue" class="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">--</span>
                         <span class="text-lg font-semibold text-sky-500">%</span>
                     </div>
                 </div>
 
                 <div class="mt-4 pt-3 border-t border-slate-100 space-y-2">
                     <div class="flex items-center justify-between text-xs text-slate-500">
-                        <span>금일 최저 <strong id="humidMinVal" class="text-slate-700 font-semibold">43.8%</strong></span>
-                        <span>금일 최고 <strong id="humidMaxVal" class="text-slate-700 font-semibold">46.2%</strong></span>
+                        <span>금일 최저 <strong id="humidMinVal" class="text-slate-700 font-semibold">--%</strong></span>
+                        <span>금일 최고 <strong id="humidMaxVal" class="text-slate-700 font-semibold">--%</strong></span>
                     </div>
                     <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div id="humidProgressBar" class="h-full bg-gradient-to-r from-cyan-400 to-sky-500 rounded-full smooth-transition" style="width: 45%;"></div>
+                        <div id="humidProgressBar" class="h-full bg-gradient-to-r from-cyan-400 to-sky-500 rounded-full smooth-transition" style="width: 0%;"></div>
                     </div>
                 </div>
             </div>
@@ -284,12 +402,12 @@
                 <div>
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">실내 쾌적도 & 불쾌지수</span>
-                        <span id="comfortBadge" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            매우 쾌적
+                        <span id="comfortBadge" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                            대기 중
                         </span>
                     </div>
                     <div class="mt-3 flex items-baseline gap-2">
-                        <span id="kpiDiValue" class="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">70.6</span>
+                        <span id="kpiDiValue" class="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">--</span>
                         <span class="text-xs font-semibold text-slate-400">DI 지수</span>
                     </div>
                 </div>
@@ -297,7 +415,7 @@
                 <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                     <span class="text-slate-500">이슬점 (Dew Point)</span>
                     <span class="font-bold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg">
-                        <span id="kpiDewPoint">11.8</span> ℃
+                        <span id="kpiDewPoint">--</span> ℃
                     </span>
                 </div>
             </div>
@@ -318,25 +436,22 @@
                 </div>
 
                 <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                    <span class="text-slate-500 flex items-center gap-1.5">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                        센서 배터리 잔량
-                    </span>
-                    <span class="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg">
-                        94% 양호
+                    <span class="text-slate-500">센서 연결 상태</span>
+                    <span id="kpiSensorHealth" class="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg">
+                        정상 수신
                     </span>
                 </div>
             </div>
 
         </section>
 
-        <!-- 3. 이중 축(Dual-Axis) 실시간 라인 차트 섹션 -->
+        <!-- 4. 이중 축(Dual-Axis) 실시간 라인 차트 섹션 -->
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
                 <div>
-                    <h2 class="text-base sm:text-lg font-bold text-slate-900">실시간 온습도 변화 추이 (최근 25건)</h2>
+                    <h2 class="text-base sm:text-lg font-bold text-slate-900">
+                        <span id="chartRoomName">시험실1</span> 온습도 변화 추이 (최근 25건)
+                    </h2>
                     <p class="text-xs text-slate-500 mt-0.5">좌측 축: 온도 (℃) · 우측 축: 상대습도 (%)</p>
                 </div>
                 <div class="flex items-center gap-2 self-start sm:self-auto">
@@ -345,7 +460,7 @@
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                        차트 초기화
+                        전체 기록 초기화
                     </button>
                 </div>
             </div>
@@ -355,12 +470,14 @@
             </div>
         </section>
 
-        <!-- 4. 최근 수신 데이터 로그 테이블 (최신 10건) -->
+        <!-- 5. 최근 수신 데이터 로그 테이블 (선택된 구역 최신 10건) -->
         <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div class="p-5 sm:px-6 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                    <h2 class="text-base sm:text-lg font-bold text-slate-900">최근 센서 데이터 수신 로그</h2>
-                    <p class="text-xs text-slate-500 mt-0.5">가장 최근에 수집된 10건의 측정 이력이 실시간으로 표시됩니다.</p>
+                    <h2 class="text-base sm:text-lg font-bold text-slate-900">
+                        <span id="logRoomName">시험실1</span> 최근 수신 로그
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-0.5">선택된 구역의 최신 10건 측정 이력이 표시됩니다. (CSV 내보내기 시 3개 구역 전체 포함)</p>
                 </div>
                 <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
                     누적 기록: <strong id="totalLogCount" class="text-slate-800">0</strong>건
@@ -379,7 +496,7 @@
                         </tr>
                     </thead>
                     <tbody id="logTableBody" class="divide-y divide-slate-100 text-xs sm:text-sm">
-                        <!-- 동적 행 렌더링 영역 -->
+                        <!-- 동적 행 렌더링 -->
                     </tbody>
                 </table>
             </div>
@@ -389,35 +506,76 @@
 
     <script>
         /**
-         * Smart Life 실시간 온습도 대시보드 핵심 로직
-         * - 시뮬레이션 모드(기본값) 및 실제 FastAPI REST API 연동 모드 지원
-         * - 기상청 공식 불쾌지수(DI) 및 이슬점(Dew Point) 실시간 계산
-         * - Chart.js 이중 축 그라데이션 차트 및 UTF-8 BOM CSV 내보내기
+         * Smart Life 다중 센서(보관실, 시험실1, 시험실2) 실시간 온습도 대시보드
          */
+
+        const ROOM_CONFIG = {
+            storage: {
+                key: 'storage',
+                name: '보관실',
+                dotClass: 'bg-violet-400',
+                simBaseTemp: 19.8,
+                simBaseHumid: 41.0
+            },
+            lab1: {
+                key: 'lab1',
+                name: '시험실1',
+                dotClass: 'bg-sky-400',
+                simBaseTemp: 23.4,
+                simBaseHumid: 45.0
+            },
+            lab2: {
+                key: 'lab2',
+                name: '시험실2',
+                dotClass: 'bg-emerald-400',
+                simBaseTemp: 24.6,
+                simBaseHumid: 49.5
+            }
+        };
+
+        const ROOM_KEYS = ['storage', 'lab1', 'lab2'];
+
+        function createEmptyRoomState(key) {
+            return {
+                simTemp: ROOM_CONFIG[key].simBaseTemp,
+                simHumid: ROOM_CONFIG[key].simBaseHumid,
+                configured: true,
+                statusText: '대기 중',
+                statusType: 'neutral', // 'ok' | 'unconfigured' | 'error' | 'neutral'
+                errorMsg: null,
+                lastTemp: null,
+                lastHumid: null,
+                tempDelta: 0.0,
+                humidDelta: 0.0,
+                minTemp: null,
+                maxTemp: null,
+                minHumid: null,
+                maxHumid: null,
+                lastUpdated: '--:--:--',
+                chartLabels: [],
+                chartTemps: [],
+                chartHumids: [],
+                logs: []
+            };
+        }
 
         const state = {
             mode: 'simulation', // 'simulation' | 'fastapi'
-            apiUrl: '/api/sensor',
+            apiUrl: '/api/sensors',
+            selectedRoom: 'lab1',
             pollingIntervalMs: 3600000,
             isPaused: false,
             timerId: null,
             maxChartPoints: 25,
-            simTemp: 24.5,
-            simHumid: 45.0,
-            lastTemp: null,
-            lastHumid: null,
-            minTemp: null,
-            maxTemp: null,
-            minHumid: null,
-            maxHumid: null,
-            allLogs: []
+            rooms: {
+                storage: createEmptyRoomState('storage'),
+                lab1: createEmptyRoomState('lab1'),
+                lab2: createEmptyRoomState('lab2')
+            }
         };
 
         let sensorChart = null;
 
-        /**
-         * 비침습 토스트 메시지 출력 (alert() 대체)
-         */
         function showToast(message, type = 'info') {
             const container = document.getElementById('toastContainer');
             if (!container) return;
@@ -434,10 +592,7 @@
             toast.textContent = message;
 
             container.appendChild(toast);
-
-            requestAnimationFrame(() => {
-                toast.classList.remove('translate-y-2', 'opacity-0');
-            });
+            requestAnimationFrame(() => toast.classList.remove('translate-y-2', 'opacity-0'));
 
             setTimeout(() => {
                 toast.classList.add('translate-y-2', 'opacity-0');
@@ -445,22 +600,14 @@
             }, 2800);
         }
 
-        /**
-         * 시간 포맷팅 유틸리티 (HH:MM:SS)
-         */
         function formatTime(date = new Date()) {
             const pad = (n) => String(n).padStart(2, '0');
             return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
         }
 
-        /**
-         * 기상청 공식 불쾌지수(DI) 및 이슬점(Dew Point) 계산
-         */
         function calculateComfortMetrics(temp, humid) {
-            // 불쾌지수 공식: DI = 0.81 * T + 0.01 * RH * (0.99 * T - 14.3) + 46.3
             const di = 0.81 * temp + 0.01 * humid * (0.99 * temp - 14.3) + 46.3;
 
-            // Magnus-Tetens 이슬점 근사 공식
             const a = 17.27;
             const b = 237.7;
             const safeHumid = Math.max(1, Math.min(100, humid));
@@ -498,9 +645,6 @@
             };
         }
 
-        /**
-         * Chart.js 이중 축(Dual-Axis) 라인 차트 초기화
-         */
         function initChart() {
             const canvas = document.getElementById('sensorChart');
             if (!canvas) return;
@@ -554,10 +698,7 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false
-                    },
+                    interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: {
                             position: 'top',
@@ -565,71 +706,37 @@
                             labels: {
                                 usePointStyle: true,
                                 boxWidth: 8,
-                                font: {
-                                    family: "'Pretendard', 'Inter', sans-serif",
-                                    size: 12,
-                                    weight: '600'
-                                }
+                                font: { family: "'Pretendard', 'Inter', sans-serif", size: 12, weight: '600' }
                             }
                         },
                         tooltip: {
                             backgroundColor: 'rgba(15, 23, 42, 0.92)',
                             padding: 12,
-                            cornerRadius: 10,
-                            titleFont: { size: 12, weight: 'bold' },
-                            bodyFont: { size: 12 }
+                            cornerRadius: 10
                         }
                     },
                     scales: {
                         x: {
-                            grid: {
-                                display: false
-                            },
-                            ticks: {
-                                maxRotation: 0,
-                                autoSkip: true,
-                                maxTicksLimit: 8,
-                                color: '#64748b',
-                                font: { size: 11 }
-                            }
+                            grid: { display: false },
+                            ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, color: '#64748b', font: { size: 11 } }
                         },
                         yTemp: {
                             type: 'linear',
                             position: 'left',
-                            title: {
-                                display: true,
-                                text: '온도 (℃)',
-                                color: '#f43f5e',
-                                font: { size: 11, weight: '600' }
-                            },
-                            suggestedMin: 18,
-                            suggestedMax: 32,
-                            grid: {
-                                color: '#f1f5f9'
-                            },
-                            ticks: {
-                                color: '#f43f5e',
-                                font: { size: 11 }
-                            }
+                            title: { display: true, text: '온도 (℃)', color: '#f43f5e', font: { size: 11, weight: '600' } },
+                            suggestedMin: 16,
+                            suggestedMax: 30,
+                            grid: { color: '#f1f5f9' },
+                            ticks: { color: '#f43f5e', font: { size: 11 } }
                         },
                         yHumid: {
                             type: 'linear',
                             position: 'right',
-                            title: {
-                                display: true,
-                                text: '습도 (%)',
-                                color: '#0ea5e9',
-                                font: { size: 11, weight: '600' }
-                            },
+                            title: { display: true, text: '습도 (%)', color: '#0ea5e9', font: { size: 11, weight: '600' } },
                             suggestedMin: 20,
                             suggestedMax: 80,
-                            grid: {
-                                drawOnChartArea: false
-                            },
-                            ticks: {
-                                color: '#0ea5e9',
-                                font: { size: 11 }
-                            }
+                            grid: { drawOnChartArea: false },
+                            ticks: { color: '#0ea5e9', font: { size: 11 } }
                         }
                     }
                 }
@@ -637,91 +744,53 @@
         }
 
         /**
-         * 새로운 측정값(온도, 습도, 시각)을 UI 카드, 차트, 로그 테이블에 반영
+         * 전체 구역 데이터 초기화 (모드 전환 시 혼선 방지)
          */
-        function updateDashboardWithReading(temp, humid, timeStr, isInitialSeed = false) {
+        function clearAllRoomsHistory() {
+            ROOM_KEYS.forEach((key) => {
+                state.rooms[key] = createEmptyRoomState(key);
+            });
+            renderAllOverviewCards();
+            renderSelectedRoomDetails(true);
+        }
+
+        /**
+         * 특정 구역에 새로운 측정값 기록
+         */
+        function recordRoomReading(roomKey, temp, humid, timeStr) {
+            const room = state.rooms[roomKey];
             const cleanTemp = Number(Number(temp).toFixed(1));
             const cleanHumid = Number(Number(humid).toFixed(1));
 
-            // 금일 최저/최고 갱신
-            if (state.minTemp === null || cleanTemp < state.minTemp) state.minTemp = cleanTemp;
-            if (state.maxTemp === null || cleanTemp > state.maxTemp) state.maxTemp = cleanTemp;
-            if (state.minHumid === null || cleanHumid < state.minHumid) state.minHumid = cleanHumid;
-            if (state.maxHumid === null || cleanHumid > state.maxHumid) state.maxHumid = cleanHumid;
+            if (room.minTemp === null || cleanTemp < room.minTemp) room.minTemp = cleanTemp;
+            if (room.maxTemp === null || cleanTemp > room.maxTemp) room.maxTemp = cleanTemp;
+            if (room.minHumid === null || cleanHumid < room.minHumid) room.minHumid = cleanHumid;
+            if (room.maxHumid === null || cleanHumid > room.maxHumid) room.maxHumid = cleanHumid;
 
-            // 직전 대비 변화량 계산
-            const tempDelta = state.lastTemp !== null ? Number((cleanTemp - state.lastTemp).toFixed(1)) : 0.0;
-            const humidDelta = state.lastHumid !== null ? Number((cleanHumid - state.lastHumid).toFixed(1)) : 0.0;
+            room.tempDelta = room.lastTemp !== null ? Number((cleanTemp - room.lastTemp).toFixed(1)) : 0.0;
+            room.humidDelta = room.lastHumid !== null ? Number((cleanHumid - room.lastHumid).toFixed(1)) : 0.0;
 
-            state.lastTemp = cleanTemp;
-            state.lastHumid = cleanHumid;
+            room.lastTemp = cleanTemp;
+            room.lastHumid = cleanHumid;
+            room.lastUpdated = timeStr;
+            room.configured = true;
+            room.statusType = 'ok';
+            room.statusText = state.mode === 'simulation' ? '시뮬레이션' : '연동 정상';
+            room.errorMsg = null;
 
-            // 불쾌지수 및 이슬점 계산
             const comfort = calculateComfortMetrics(cleanTemp, cleanHumid);
 
-            // KPI 1: 온도 카드 업데이트
-            document.getElementById('kpiTempValue').textContent = cleanTemp.toFixed(1);
-            document.getElementById('tempMinVal').textContent = `${state.minTemp.toFixed(1)}℃`;
-            document.getElementById('tempMaxVal').textContent = `${state.maxTemp.toFixed(1)}℃`;
-
-            const tempDeltaBadge = document.getElementById('tempDeltaBadge');
-            if (tempDelta > 0) {
-                tempDeltaBadge.textContent = `+${tempDelta.toFixed(1)}℃`;
-                tempDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-600';
-            } else if (tempDelta < 0) {
-                tempDeltaBadge.textContent = `${tempDelta.toFixed(1)}℃`;
-                tempDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-600';
-            } else {
-                tempDeltaBadge.textContent = '0.0℃';
-                tempDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
+            if (room.chartLabels.length >= state.maxChartPoints) {
+                room.chartLabels.shift();
+                room.chartTemps.shift();
+                room.chartHumids.shift();
             }
-            const tempPercent = Math.max(0, Math.min(100, (cleanTemp / 40) * 100));
-            document.getElementById('tempProgressBar').style.width = `${tempPercent}%`;
+            room.chartLabels.push(timeStr);
+            room.chartTemps.push(cleanTemp);
+            room.chartHumids.push(cleanHumid);
 
-            // KPI 2: 습도 카드 업데이트
-            document.getElementById('kpiHumidValue').textContent = cleanHumid.toFixed(1);
-            document.getElementById('humidMinVal').textContent = `${state.minHumid.toFixed(1)}%`;
-            document.getElementById('humidMaxVal').textContent = `${state.maxHumid.toFixed(1)}%`;
-
-            const humidDeltaBadge = document.getElementById('humidDeltaBadge');
-            if (humidDelta > 0) {
-                humidDeltaBadge.textContent = `+${humidDelta.toFixed(1)}%`;
-                humidDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-600';
-            } else if (humidDelta < 0) {
-                humidDeltaBadge.textContent = `${humidDelta.toFixed(1)}%`;
-                humidDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-600';
-            } else {
-                humidDeltaBadge.textContent = '0.0%';
-                humidDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
-            }
-            const humidPercent = Math.max(0, Math.min(100, cleanHumid));
-            document.getElementById('humidProgressBar').style.width = `${humidPercent}%`;
-
-            // KPI 3: 쾌적도 & 불쾌지수 업데이트
-            document.getElementById('kpiDiValue').textContent = comfort.di.toFixed(1);
-            document.getElementById('kpiDewPoint').textContent = comfort.dewPoint.toFixed(1);
-            const comfortBadge = document.getElementById('comfortBadge');
-            comfortBadge.textContent = comfort.label;
-            comfortBadge.className = `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${comfort.badgeClass}`;
-
-            // KPI 4: 마지막 수신 시각 업데이트
-            document.getElementById('kpiLastUpdated').textContent = timeStr;
-
-            // 차트 데이터 추가 (최대 25개 유지)
-            if (sensorChart) {
-                if (sensorChart.data.labels.length >= state.maxChartPoints) {
-                    sensorChart.data.labels.shift();
-                    sensorChart.data.datasets[0].data.shift();
-                    sensorChart.data.datasets[1].data.shift();
-                }
-                sensorChart.data.labels.push(timeStr);
-                sensorChart.data.datasets[0].data.push(cleanTemp);
-                sensorChart.data.datasets[1].data.push(cleanHumid);
-                sensorChart.update(isInitialSeed ? 'none' : undefined);
-            }
-
-            // 전체 로그 저장 및 최근 10건 테이블 렌더링
-            state.allLogs.unshift({
+            room.logs.unshift({
+                roomName: ROOM_CONFIG[roomKey].name,
                 time: timeStr,
                 temp: cleanTemp.toFixed(1),
                 humid: cleanHumid.toFixed(1),
@@ -729,66 +798,256 @@
                 label: comfort.label,
                 badgeClass: comfort.badgeClass
             });
-
-            renderLogTable();
         }
 
         /**
-         * 최근 수신 로그 테이블 렌더링 (최신 10건)
+         * 상단 3개 구역 요약 카드 렌더링
          */
-        function renderLogTable() {
+        function renderAllOverviewCards() {
+            ROOM_KEYS.forEach((key) => {
+                const room = state.rooms[key];
+                const card = document.getElementById(`roomCard-${key}`);
+                const statusEl = document.getElementById(`roomStatus-${key}`);
+                const tempEl = document.getElementById(`roomTemp-${key}`);
+                const humidEl = document.getElementById(`roomHumid-${key}`);
+                const comfortEl = document.getElementById(`roomComfort-${key}`);
+                const timeEl = document.getElementById(`roomTime-${key}`);
+
+                const isSelected = state.selectedRoom === key;
+                card.className = isSelected
+                    ? 'text-left bg-sky-50/40 rounded-2xl border-2 border-sky-500 ring-2 ring-sky-500/20 p-5 shadow-sm transition-all cursor-pointer focus:outline-none'
+                    : 'text-left bg-white rounded-2xl border-2 border-slate-200 hover:border-sky-300 p-5 shadow-sm transition-all cursor-pointer focus:outline-none';
+
+                if (room.statusType === 'ok' && room.lastTemp !== null) {
+                    const comfort = calculateComfortMetrics(room.lastTemp, room.lastHumid);
+                    tempEl.textContent = room.lastTemp.toFixed(1);
+                    humidEl.textContent = room.lastHumid.toFixed(1);
+                    comfortEl.textContent = `${comfort.label} (DI ${comfort.di.toFixed(1)})`;
+                    comfortEl.className = 'font-semibold text-slate-700';
+                    timeEl.textContent = room.lastUpdated;
+
+                    statusEl.textContent = room.statusText;
+                    statusEl.className = state.mode === 'simulation'
+                        ? 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200'
+                        : 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200';
+                } else if (room.statusType === 'unconfigured') {
+                    tempEl.textContent = '--';
+                    humidEl.textContent = '--';
+                    comfortEl.textContent = 'Device ID 미등록';
+                    comfortEl.className = 'font-semibold text-amber-600';
+                    timeEl.textContent = '--:--:--';
+
+                    statusEl.textContent = 'ID 미설정';
+                    statusEl.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200';
+                } else if (room.statusType === 'error') {
+                    tempEl.textContent = '--';
+                    humidEl.textContent = '--';
+                    comfortEl.textContent = '수신 오류';
+                    comfortEl.className = 'font-semibold text-rose-600';
+                    timeEl.textContent = room.lastUpdated;
+
+                    statusEl.textContent = '연결 오류';
+                    statusEl.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200';
+                } else {
+                    tempEl.textContent = '--';
+                    humidEl.textContent = '--';
+                    comfortEl.textContent = '수신 대기 중';
+                    comfortEl.className = 'font-semibold text-slate-400';
+                    timeEl.textContent = '--:--:--';
+
+                    statusEl.textContent = '대기 중';
+                    statusEl.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200';
+                }
+            });
+        }
+
+        /**
+         * 선택된 구역의 상세 KPI, 차트, 로그 테이블 렌더링
+         */
+        function renderSelectedRoomDetails(skipChartAnim = false) {
+            const key = state.selectedRoom;
+            const cfg = ROOM_CONFIG[key];
+            const room = state.rooms[key];
+
+            document.getElementById('selectedRoomTitle').textContent = cfg.name;
+            document.getElementById('selectedRoomDot').className = `w-2 h-2 rounded-full ${cfg.dotClass}`;
+            document.getElementById('chartRoomName').textContent = cfg.name;
+            document.getElementById('logRoomName').textContent = cfg.name;
+
+            const subMsg = document.getElementById('selectedRoomSubMsg');
+            const healthBadge = document.getElementById('kpiSensorHealth');
+
+            if (room.statusType === 'unconfigured') {
+                subMsg.textContent = `Render 환경 변수에 ${cfg.name} Device ID를 등록하면 실시간 데이터가 표시됩니다.`;
+                healthBadge.textContent = 'ID 미설정';
+                healthBadge.className = 'font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-lg';
+            } else if (room.statusType === 'error') {
+                subMsg.textContent = room.errorMsg || '센서 데이터를 불러오지 못했습니다.';
+                healthBadge.textContent = '수신 오류';
+                healthBadge.className = 'font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-lg';
+            } else {
+                subMsg.textContent = '선택된 센서의 상세 지표 및 변화 추이입니다.';
+                healthBadge.textContent = '정상 수신';
+                healthBadge.className = 'font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg';
+            }
+
+            if (room.lastTemp !== null && room.lastHumid !== null) {
+                const comfort = calculateComfortMetrics(room.lastTemp, room.lastHumid);
+
+                // 온도 KPI
+                document.getElementById('kpiTempValue').textContent = room.lastTemp.toFixed(1);
+                document.getElementById('tempMinVal').textContent = `${room.minTemp.toFixed(1)}℃`;
+                document.getElementById('tempMaxVal').textContent = `${room.maxTemp.toFixed(1)}℃`;
+                const tempDeltaBadge = document.getElementById('tempDeltaBadge');
+                if (room.tempDelta > 0) {
+                    tempDeltaBadge.textContent = `+${room.tempDelta.toFixed(1)}℃`;
+                    tempDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-600';
+                } else if (room.tempDelta < 0) {
+                    tempDeltaBadge.textContent = `${room.tempDelta.toFixed(1)}℃`;
+                    tempDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-600';
+                } else {
+                    tempDeltaBadge.textContent = '0.0℃';
+                    tempDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
+                }
+                document.getElementById('tempProgressBar').style.width = `${Math.max(0, Math.min(100, (room.lastTemp / 40) * 100))}%`;
+
+                // 습도 KPI
+                document.getElementById('kpiHumidValue').textContent = room.lastHumid.toFixed(1);
+                document.getElementById('humidMinVal').textContent = `${room.minHumid.toFixed(1)}%`;
+                document.getElementById('humidMaxVal').textContent = `${room.maxHumid.toFixed(1)}%`;
+                const humidDeltaBadge = document.getElementById('humidDeltaBadge');
+                if (room.humidDelta > 0) {
+                    humidDeltaBadge.textContent = `+${room.humidDelta.toFixed(1)}%`;
+                    humidDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-600';
+                } else if (room.humidDelta < 0) {
+                    humidDeltaBadge.textContent = `${room.humidDelta.toFixed(1)}%`;
+                    humidDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-600';
+                } else {
+                    humidDeltaBadge.textContent = '0.0%';
+                    humidDeltaBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
+                }
+                document.getElementById('humidProgressBar').style.width = `${Math.max(0, Math.min(100, room.lastHumid))}%`;
+
+                // 쾌적도 & 불쾌지수
+                document.getElementById('kpiDiValue').textContent = comfort.di.toFixed(1);
+                document.getElementById('kpiDewPoint').textContent = comfort.dewPoint.toFixed(1);
+                const comfortBadge = document.getElementById('comfortBadge');
+                comfortBadge.textContent = comfort.label;
+                comfortBadge.className = `inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${comfort.badgeClass}`;
+
+                document.getElementById('kpiLastUpdated').textContent = room.lastUpdated;
+            } else {
+                document.getElementById('kpiTempValue').textContent = '--';
+                document.getElementById('tempMinVal').textContent = '--℃';
+                document.getElementById('tempMaxVal').textContent = '--℃';
+                document.getElementById('tempDeltaBadge').textContent = '0.0℃';
+                document.getElementById('tempDeltaBadge').className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
+                document.getElementById('tempProgressBar').style.width = '0%';
+
+                document.getElementById('kpiHumidValue').textContent = '--';
+                document.getElementById('humidMinVal').textContent = '--%';
+                document.getElementById('humidMaxVal').textContent = '--%';
+                document.getElementById('humidDeltaBadge').textContent = '0.0%';
+                document.getElementById('humidDeltaBadge').className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
+                document.getElementById('humidProgressBar').style.width = '0%';
+
+                document.getElementById('kpiDiValue').textContent = '--';
+                document.getElementById('kpiDewPoint').textContent = '--';
+                const comfortBadge = document.getElementById('comfortBadge');
+                comfortBadge.textContent = '수신 대기';
+                comfortBadge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200';
+                document.getElementById('kpiLastUpdated').textContent = '--:--:--';
+            }
+
+            // 차트 갱신
+            if (sensorChart) {
+                sensorChart.data.labels = [...room.chartLabels];
+                sensorChart.data.datasets[0].data = [...room.chartTemps];
+                sensorChart.data.datasets[1].data = [...room.chartHumids];
+                sensorChart.update(skipChartAnim ? 'none' : undefined);
+            }
+
+            // 로그 테이블 갱신
             const tbody = document.getElementById('logTableBody');
             const countEl = document.getElementById('totalLogCount');
-            if (!tbody || !countEl) return;
+            countEl.textContent = room.logs.length;
 
-            countEl.textContent = state.allLogs.length;
-            const recentTen = state.allLogs.slice(0, 10);
-
-            tbody.innerHTML = recentTen.map((row, idx) => `
-                <tr class="${idx === 0 ? 'bg-sky-50/40' : 'hover:bg-slate-50'} transition-colors">
-                    <td class="py-3 px-4 sm:px-6 font-mono text-slate-600">${row.time}</td>
-                    <td class="py-3 px-4 sm:px-6 font-semibold text-rose-600">${row.temp} ℃</td>
-                    <td class="py-3 px-4 sm:px-6 font-semibold text-sky-600">${row.humid} %</td>
-                    <td class="py-3 px-4 sm:px-6 font-medium text-slate-700">${row.di}</td>
-                    <td class="py-3 px-4 sm:px-6">
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${row.badgeClass}">
-                            ${row.label}
-                        </span>
-                    </td>
-                </tr>
-            `).join('');
+            if (room.logs.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="py-8 px-4 text-center text-slate-400 text-xs sm:text-sm">
+                            ${room.statusType === 'unconfigured'
+                                ? `${cfg.name} 센서의 Device ID가 아직 설정되지 않았습니다.`
+                                : '수신된 측정 기록이 없습니다.'}
+                        </td>
+                    </tr>
+                `;
+            } else {
+                tbody.innerHTML = room.logs.slice(0, 10).map((row, idx) => `
+                    <tr class="${idx === 0 ? 'bg-sky-50/40' : 'hover:bg-slate-50'} transition-colors">
+                        <td class="py-3 px-4 sm:px-6 font-mono text-slate-600">${row.time}</td>
+                        <td class="py-3 px-4 sm:px-6 font-semibold text-rose-600">${row.temp} ℃</td>
+                        <td class="py-3 px-4 sm:px-6 font-semibold text-sky-600">${row.humid} %</td>
+                        <td class="py-3 px-4 sm:px-6 font-medium text-slate-700">${row.di}</td>
+                        <td class="py-3 px-4 sm:px-6">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${row.badgeClass}">
+                                ${row.label}
+                            </span>
+                        </td>
+                    </tr>
+                `).join('');
+            }
         }
 
-        /**
-         * 시뮬레이션 데이터 1회 생성
-         */
-        function generateSimulatedReading() {
+        function selectRoom(roomKey) {
+            if (!ROOM_CONFIG[roomKey]) return;
+            state.selectedRoom = roomKey;
+            renderAllOverviewCards();
+            renderSelectedRoomDetails(true);
+        }
+
+        function generateSimulatedForRoom(roomKey) {
+            const room = state.rooms[roomKey];
             const tempDelta = (Math.random() - 0.48) * 0.3;
             const humidDelta = (Math.random() - 0.5) * 0.8;
 
-            state.simTemp = Math.max(19.0, Math.min(31.0, state.simTemp + tempDelta));
-            state.simHumid = Math.max(30.0, Math.min(75.0, state.simHumid + humidDelta));
+            room.simTemp = Math.max(15.0, Math.min(32.0, room.simTemp + tempDelta));
+            room.simHumid = Math.max(25.0, Math.min(75.0, room.simHumid + humidDelta));
 
             return {
-                temperature: Number(state.simTemp.toFixed(1)),
-                humidity: Number(state.simHumid.toFixed(1))
+                temperature: Number(room.simTemp.toFixed(1)),
+                humidity: Number(room.simHumid.toFixed(1))
             };
         }
 
-        /**
-         * 데이터 수집 실행 (모드에 따라 시뮬레이션 또는 FastAPI 호출)
-         */
+        function seedSimulationData() {
+            const now = Date.now();
+            for (let i = 7; i >= 0; i--) {
+                const pastStr = formatTime(new Date(now - i * state.pollingIntervalMs));
+                ROOM_KEYS.forEach((key) => {
+                    const sim = generateSimulatedForRoom(key);
+                    recordRoomReading(key, sim.temperature, sim.humidity, pastStr);
+                });
+            }
+            renderAllOverviewCards();
+            renderSelectedRoomDetails(true);
+        }
+
         async function fetchAndUpdate() {
             const nowStr = formatTime(new Date());
 
             if (state.mode === 'simulation') {
                 hideErrorBanner();
-                const sim = generateSimulatedReading();
-                updateDashboardWithReading(sim.temperature, sim.humidity, nowStr);
+                ROOM_KEYS.forEach((key) => {
+                    const sim = generateSimulatedForRoom(key);
+                    recordRoomReading(key, sim.temperature, sim.humidity, nowStr);
+                });
+                renderAllOverviewCards();
+                renderSelectedRoomDetails();
                 return;
             }
 
-            // 실제 FastAPI 서버 연동 모드
+            // 실제 FastAPI 서버 연동 모드 (/api/sensors)
             try {
                 const response = await fetch(state.apiUrl, {
                     method: 'GET',
@@ -801,27 +1060,52 @@
 
                 const data = await response.json();
 
-                if (data.success === false) {
-                    const rawMsg = data.raw && data.raw.msg ? ` (Tuya 응답: ${data.raw.msg} [코드: ${data.raw.code || 'N/A'}])` : '';
-                    throw new Error(`Tuya 클라우드 데이터 조회 실패 (success: false)${rawMsg}`);
+                if (!data.sensors || typeof data.sensors !== 'object') {
+                    throw new Error('다중 센서 응답 형식(sensors 객체)이 아닙니다. main.py를 최신 버전으로 업데이트했는지 확인하세요.');
                 }
 
-                if (typeof data.temperature !== 'number' || typeof data.humidity !== 'number') {
-                    throw new Error('응답 JSON에 유효한 temperature 또는 humidity 숫자 필드가 없습니다.');
-                }
+                let anySuccess = false;
+                let firstError = '';
 
-                hideErrorBanner();
-                updateLiveBadgeStatus('connected');
-                updateDashboardWithReading(data.temperature, data.humidity, nowStr);
+                ROOM_KEYS.forEach((key) => {
+                    const sensorData = data.sensors[key];
+                    const room = state.rooms[key];
+                    if (!sensorData) return;
+
+                    if (sensorData.configured === false) {
+                        room.configured = false;
+                        room.statusType = 'unconfigured';
+                        room.statusText = 'ID 미설정';
+                        room.errorMsg = sensorData.error;
+                    } else if (sensorData.success && typeof sensorData.temperature === 'number' && typeof sensorData.humidity === 'number') {
+                        recordRoomReading(key, sensorData.temperature, sensorData.humidity, nowStr);
+                        anySuccess = true;
+                    } else {
+                        room.configured = true;
+                        room.statusType = 'error';
+                        room.statusText = '연결 오류';
+                        room.errorMsg = sensorData.error || 'Tuya 데이터 조회 실패';
+                        room.lastUpdated = nowStr;
+                        if (!firstError) firstError = `${ROOM_CONFIG[key].name}: ${room.errorMsg}`;
+                    }
+                });
+
+                renderAllOverviewCards();
+                renderSelectedRoomDetails();
+
+                if (anySuccess) {
+                    hideErrorBanner();
+                    updateLiveBadgeStatus('connected');
+                } else {
+                    showErrorBanner(firstError || '연동된 센서 중 정상 응답을 받은 기기가 없습니다.');
+                    updateLiveBadgeStatus('error');
+                }
             } catch (err) {
                 showErrorBanner(err.message);
                 updateLiveBadgeStatus('error');
             }
         }
 
-        /**
-         * 오류 배너 표시 / 숨김
-         */
         function showErrorBanner(detailMsg) {
             const banner = document.getElementById('errorBanner');
             const detail = document.getElementById('errorDetailText');
@@ -833,14 +1117,9 @@
 
         function hideErrorBanner() {
             const banner = document.getElementById('errorBanner');
-            if (banner) {
-                banner.classList.add('hidden');
-            }
+            if (banner) banner.classList.add('hidden');
         }
 
-        /**
-         * 상단 실시간 수신 상태 배지 업데이트
-         */
         function updateLiveBadgeStatus(status) {
             const badge = document.getElementById('liveStatusBadge');
             const pulse = document.getElementById('livePulseWrapper');
@@ -868,11 +1147,11 @@
             }
         }
 
-        /**
-         * 모드 전환 ('simulation' | 'fastapi')
-         */
         function setMode(newMode) {
+            if (state.mode === newMode) return;
             state.mode = newMode;
+
+            clearAllRoomsHistory();
 
             const btnSim = document.getElementById('btnModeSim');
             const btnLive = document.getElementById('btnModeLive');
@@ -887,22 +1166,19 @@
                 sourceBadge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200';
                 hideErrorBanner();
                 updateLiveBadgeStatus('connected');
-                showToast('시뮬레이션 모드로 전환되었습니다.', 'info');
+                seedSimulationData();
+                showToast('시뮬레이션 모드로 전환되었습니다. (기존 기록 초기화)', 'info');
             } else {
                 btnLive.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-white text-slate-900 shadow-sm';
                 btnSim.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-600 hover:text-slate-900';
                 configPanel.classList.remove('hidden');
                 sourceBadge.textContent = 'FastAPI 실시간';
                 sourceBadge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200';
-                showToast(`실제 FastAPI 서버(${state.apiUrl}) 연동을 시도합니다.`, 'info');
+                showToast(`실제 FastAPI 서버(${state.apiUrl}) 연동을 시작합니다.`, 'info');
+                fetchAndUpdate();
             }
-
-            fetchAndUpdate();
         }
 
-        /**
-         * 백엔드 API URL 적용
-         */
         function applyApiUrl() {
             const input = document.getElementById('apiUrlInput');
             if (!input) return;
@@ -916,23 +1192,13 @@
             fetchAndUpdate();
         }
 
-        /**
-         * 폴링 타이머 시작/재시작
-         */
         function startPolling() {
-            if (state.timerId) {
-                clearInterval(state.timerId);
-            }
+            if (state.timerId) clearInterval(state.timerId);
             state.timerId = setInterval(() => {
-                if (!state.isPaused) {
-                    fetchAndUpdate();
-                }
+                if (!state.isPaused) fetchAndUpdate();
             }, state.pollingIntervalMs);
         }
 
-        /**
-         * 갱신 주기 변경
-         */
         function changePollingInterval() {
             const select = document.getElementById('intervalSelect');
             if (!select) return;
@@ -944,9 +1210,6 @@
             showToast(`갱신 주기가 ${selectedLabel}${josa} 변경되었습니다.`, 'info');
         }
 
-        /**
-         * 즉시 갱신 버튼 클릭
-         */
         function manualRefresh() {
             const icon = document.getElementById('refreshIcon');
             if (icon) {
@@ -954,12 +1217,9 @@
                 setTimeout(() => icon.classList.remove('rotate-180'), 500);
             }
             fetchAndUpdate();
-            showToast('최신 데이터를 갱신했습니다.', 'success');
+            showToast('3개 구역의 최신 데이터를 갱신했습니다.', 'success');
         }
 
-        /**
-         * 일시정지 / 재개 토글
-         */
         function togglePause() {
             state.isPaused = !state.isPaused;
             const btn = document.getElementById('btnPauseResume');
@@ -979,41 +1239,26 @@
             }
         }
 
-        /**
-         * 차트 및 로그 초기화
-         */
         function resetChartAndLogs() {
-            state.allLogs = [];
-            state.minTemp = null;
-            state.maxTemp = null;
-            state.minHumid = null;
-            state.maxHumid = null;
-            state.lastTemp = null;
-            state.lastHumid = null;
-
-            if (sensorChart) {
-                sensorChart.data.labels = [];
-                sensorChart.data.datasets[0].data = [];
-                sensorChart.data.datasets[1].data = [];
-                sensorChart.update();
-            }
-
-            renderLogTable();
+            clearAllRoomsHistory();
             fetchAndUpdate();
-            showToast('차트와 수신 기록이 초기화되었습니다.', 'info');
+            showToast('모든 구역의 차트와 수신 기록이 초기화되었습니다.', 'info');
         }
 
-        /**
-         * 수집된 데이터를 CSV 파일로 내보내기 (엑셀 한글 호환 UTF-8 BOM 포함)
-         */
         function exportCSV() {
-            if (state.allLogs.length === 0) {
+            const combinedLogs = [];
+            ROOM_KEYS.forEach((key) => {
+                state.rooms[key].logs.forEach((item) => combinedLogs.push(item));
+            });
+
+            if (combinedLogs.length === 0) {
                 showToast('내보낼 측정 데이터가 없습니다.', 'warning');
                 return;
             }
 
-            const headers = ['수신시각', '온도(℃)', '습도(%)', '불쾌지수(DI)', '상태판정'];
-            const rows = state.allLogs.map(item => [
+            const headers = ['센서위치', '수신시각', '온도(℃)', '습도(%)', '불쾌지수(DI)', '상태판정'];
+            const rows = combinedLogs.map((item) => [
+                item.roomName,
                 item.time,
                 item.temp,
                 item.humid,
@@ -1021,12 +1266,12 @@
                 item.label
             ]);
 
-            const csvContent = '\uFEFF' + [headers, ...rows].map(e => e.join(',')).join('\n');
+            const csvContent = '\uFEFF' + [headers, ...rows].map((e) => e.join(',')).join('\n');
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
 
             const now = new Date();
-            const fileName = `smartlife_sensor_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.csv`;
+            const fileName = `smartlife_all_sensors_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.csv`;
 
             const link = document.createElement('a');
             link.setAttribute('href', url);
@@ -1036,22 +1281,12 @@
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
 
-            showToast(`총 ${state.allLogs.length}건의 기록을 CSV로 저장했습니다.`, 'success');
+            showToast(`3개 구역 총 ${combinedLogs.length}건의 기록을 CSV로 저장했습니다.`, 'success');
         }
 
-        /**
-         * 초기 로드 시 과거 8개 데이터 시드 생성 후 실시간 타이머 시작
-         */
         window.addEventListener('DOMContentLoaded', () => {
             initChart();
-
-            const now = Date.now();
-            for (let i = 7; i >= 0; i--) {
-                const pastDate = new Date(now - i * state.pollingIntervalMs);
-                const sim = generateSimulatedReading();
-                updateDashboardWithReading(sim.temperature, sim.humidity, formatTime(pastDate), true);
-            }
-
+            seedSimulationData();
             startPolling();
         });
     </script>
