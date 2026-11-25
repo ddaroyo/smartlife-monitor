@@ -1133,21 +1133,48 @@
                 return;
             }
 
-            if (status === 'error') {
-                badge.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-rose-50 text-rose-700 border border-rose-200';
-                pulse.innerHTML = '<span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>';
-                text.textContent = '서버 연결 오류';
-            } else {
-                badge.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200';
-                pulse.innerHTML = `
-                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                `;
-                text.textContent = '실시간 수신 중';
+        /**
+         * 구글 스프레드시트(Apps Script)에 누적된 과거 기록 불러오기
+         */
+        async function loadHistoryFromSheet() {
+            const historyUrl = state.apiUrl.includes('/api/sensors')
+                ? state.apiUrl.replace('/api/sensors', '/api/history')
+                : '/api/history';
+
+            try {
+                const response = await fetch(`${historyUrl}?limit=${state.maxChartPoints}`, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!response.ok) return;
+
+                const data = await response.json();
+                if (!data.success || !data.history) return;
+
+                let loadedCount = 0;
+                ROOM_KEYS.forEach((key) => {
+                    const records = data.history[key];
+                    if (Array.isArray(records) && records.length > 0) {
+                        records.forEach((item) => {
+                            if (typeof item.temperature === 'number' && typeof item.humidity === 'number') {
+                                recordRoomReading(key, item.temperature, item.humidity, item.time);
+                                loadedCount++;
+                            }
+                        });
+                    }
+                });
+
+                if (loadedCount > 0) {
+                    renderAllOverviewCards();
+                    renderSelectedRoomDetails(true);
+                    showToast(`구글 시트에서 누적 기록 ${loadedCount}건을 불러왔습니다.`, 'success');
+                }
+            } catch (err) {
+                console.warn('누적 기록 로드 실패:', err);
             }
         }
 
-        function setMode(newMode) {
+        async function setMode(newMode) {
             if (state.mode === newMode) return;
             state.mode = newMode;
 
@@ -1174,7 +1201,8 @@
                 configPanel.classList.remove('hidden');
                 sourceBadge.textContent = 'FastAPI 실시간';
                 sourceBadge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200';
-                showToast(`실제 FastAPI 서버(${state.apiUrl}) 연동을 시작합니다.`, 'info');
+                showToast(`누적 기록 및 실시간 서버(${state.apiUrl})를 불러옵니다.`, 'info');
+                await loadHistoryFromSheet();
                 fetchAndUpdate();
             }
         }
