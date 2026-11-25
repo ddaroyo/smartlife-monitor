@@ -1,4 +1,7 @@
 import os
+import json
+import urllib.request
+import urllib.error
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from tuya_connector import TuyaOpenAPI
@@ -16,6 +19,7 @@ app.add_middleware(
 ENDPOINT = "https://openapi.tuyaus.com"
 ACCESS_ID = os.getenv("ACCESS_ID", "")
 ACCESS_SECRET = os.getenv("ACCESS_SECRET", "")
+GAS_WEBAPP_URL = os.getenv("GAS_WEBAPP_URL", "").strip()
 
 # 센서별 Device ID (Render Environment Variables에서 로드)
 # 기존 DEVICE_ID 환경 변수가 남아 있다면 시험실1에 자동 매핑됩니다.
@@ -108,3 +112,36 @@ def get_all_sensors():
 def get_single_sensor():
     info = SENSORS["lab1"]
     return fetch_device_status(info["device_id"], info["name"])
+
+
+# 구글 스프레드시트(Apps Script)에 누적된 과거 기록 조회
+@app.get("/api/history")
+def get_sensor_history(limit: int = 25):
+    if not GAS_WEBAPP_URL:
+        return {
+            "success": False,
+            "configured": False,
+            "history": {},
+            "error": "GAS_WEBAPP_URL 환경 변수가 설정되지 않았습니다.",
+        }
+
+    separator = "&" if "?" in GAS_WEBAPP_URL else "?"
+    url = f"{GAS_WEBAPP_URL}{separator}limit={limit}"
+
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return {
+                "success": data.get("success", False),
+                "configured": True,
+                "history": data.get("history", {}),
+                "error": data.get("error"),
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "configured": True,
+            "history": {},
+            "error": f"구글 시트 기록 조회 오류: {str(e)}",
+        }
